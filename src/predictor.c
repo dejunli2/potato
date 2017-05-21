@@ -155,6 +155,7 @@ train_predictor(uint32_t pc, uint8_t outcome)
   //
   if(bpType == GSHARE) {
     uint8_t current_predict = gBHT[gShareXOR];
+    updateReg(ghistoryReg, (int) outcome);
     if(outcome == TAKEN) {
       if(current_predict != STRONG_T)
         gBHT[gShareXOR] = current_predict + 1;
