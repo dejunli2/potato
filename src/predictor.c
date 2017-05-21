@@ -7,7 +7,6 @@
 //========================================================//
 #include <stdio.h>
 #include "predictor.h"
-
 //
 // TODO:Student Information
 //
@@ -36,8 +35,40 @@ int verbose;
 //
 //TODO: Add your own Branch Predictor data structures here
 //
+#define STRONG_NT 0
+#define WEAK_NT 1
+#define WEAK_T 2
+#define STRONG_T 3
 
+int* ghistoryReg;
+uint32_t ghistoryMask;
+int* lhistoryReg;
+uint32_t lhistoryMask;
+uint32_t gNumBitsMask;
+uint32_t lNumBitsMask;
+uint8_t* gBHT;
+uint32_t gShareXOR;
+//Shift all elements to the right, newest element shifted into leftmost position
+void updateReg(int* reg, int val)
+{
+  for(int i = ghistoryBits; i>0; i--){
+    reg[i] = reg[i-1];   
+  }
+  reg[0] = val;
+};
 
+//Converts array value to uint32_t mask
+uint32_t reg2mask(int* reg)
+{
+  uint32_t new;
+  uint32_t mask = 0;
+  for(int i = 0; i < ghistoryBits; i++){
+    new = (uint32_t) reg[i];
+    mask = mask << 1;
+    mask = mask | new;
+  }
+  return mask;
+}
 //------------------------------------//
 //        Predictor Functions         //
 //------------------------------------//
@@ -50,6 +81,32 @@ init_predictor()
   //
   //TODO: Initialize Branch Predictor Data Structures
   //
+  switch(bpType) {
+    case 0: printf("Shit is static\n");
+	    break;
+    case 1: printf("Shit is gshare\n");
+            uint32_t temp;
+            gNumBitsMask = 1;
+            for(int i = 1; i < ghistoryBits; i++) {
+              temp = 1 << i;
+              gNumBitsMask = gNumBitsMask | temp;
+            }
+            ghistoryReg = (int*) calloc(ghistoryBits, sizeof(int));
+            
+            //Create BHT and initialize all values to WEAK_NT
+	    gBHT = (uint8_t*) calloc(gNumBitsMask + 1, sizeof(uint8_t));	    
+            for(int i = 0; i < gNumBitsMask + 1; i++) {
+              gBHT[i] = WEAK_NT;
+              //printf("i: %d , reg value: %d\n",i,gBHT[i]);
+	    } 
+	    break;
+    case 2: printf("Shit is tournament\n");
+            break;
+    case 3: printf("Shit is custom\n");
+            break;
+    default: printf("Shit is broken\n");
+  }
+  return;
 }
 
 // Make a prediction for conditional branch instruction at PC 'pc'
@@ -62,12 +119,21 @@ make_prediction(uint32_t pc)
   //
   //TODO: Implement prediction scheme
   //
-
+  //printf("Mask: %x\n", gNumBitsMask);
+  //printf("Make prediction PC: %x\n", pc);
+  //printf("XOR: %x\n", gShareXOR);
   // Make a prediction based on the bpType
   switch (bpType) {
     case STATIC:
       return TAKEN;
     case GSHARE:
+      ghistoryMask = reg2mask(ghistoryReg);
+      gShareXOR =  (pc & gNumBitsMask)^ghistoryMask;
+      uint8_t predict_val = gBHT[gShareXOR];
+      if( (predict_val == STRONG_T) | (predict_val == WEAK_T) )
+        return TAKEN;
+      else
+        return NOTTAKEN;
     case TOURNAMENT:
     case CUSTOM:
     default:
@@ -88,4 +154,13 @@ train_predictor(uint32_t pc, uint8_t outcome)
   //
   //TODO: Implement Predictor training
   //
+  uint8_t current_predict = gBHT[gShareXOR];
+  if(outcome == TAKEN) {
+    if(current_predict != STRONG_T)
+      gBHT[gShareXOR] = current_predict + 1;
+  }
+  else {
+    if(current_predict != STRONG_NT)
+      gBHT[gShareXOR] = current_predict - 1;
+  }
 }
