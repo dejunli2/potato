@@ -72,13 +72,6 @@ read_branch(uint32_t *pc, uint8_t *outcome)
   uint32_t tmp;
   sscanf(buf,"0x%x %d\n",pc,&tmp);
   *outcome = tmp;
-  /* My shit
-  printf("PC: %u\n", *pc);
-  printf("PC: %x\n", *pc);
-  printf("Shift PC: %x\n",(*pc & (uint32_t)(pow(2,10)-1)));
-  printf("Mask: %x\n",(uint32_t)(pow(2,10)-1));
-  printf("XOR: %x\n", (*pc & (uint32_t)(pow(2,10)-1))^(uint32_t)(pow(2,10)-1));
-  */
   return 1;
 }
 

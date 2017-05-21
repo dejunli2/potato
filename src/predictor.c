@@ -82,9 +82,9 @@ init_predictor()
   //TODO: Initialize Branch Predictor Data Structures
   //
   switch(bpType) {
-    case 0: printf("Shit is static\n");
-	    break;
-    case 1: printf("Shit is gshare\n");
+    case 0: break;
+    case 1: 
+            gNumBitsMask = 1;
             uint32_t temp;
             gNumBitsMask = 1;
             for(int i = 1; i < ghistoryBits; i++) {
@@ -97,14 +97,11 @@ init_predictor()
 	    gBHT = (uint8_t*) calloc(gNumBitsMask + 1, sizeof(uint8_t));	    
             for(int i = 0; i < gNumBitsMask + 1; i++) {
               gBHT[i] = WEAK_NT;
-              //printf("i: %d , reg value: %d\n",i,gBHT[i]);
 	    } 
 	    break;
-    case 2: printf("Shit is tournament\n");
-            break;
-    case 3: printf("Shit is custom\n");
-            break;
-    default: printf("Shit is broken\n");
+    case 2: break;
+    case 3: break;
+    default: break;
   }
   return;
 }
