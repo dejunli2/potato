@@ -132,7 +132,9 @@ make_prediction(uint32_t pc)
       else
         return NOTTAKEN;
     case TOURNAMENT:
+      return NOTTAKEN;
     case CUSTOM:
+      return NOTTAKEN;
     default:
       break;
   }
@@ -151,13 +153,15 @@ train_predictor(uint32_t pc, uint8_t outcome)
   //
   //TODO: Implement Predictor training
   //
-  uint8_t current_predict = gBHT[gShareXOR];
-  if(outcome == TAKEN) {
-    if(current_predict != STRONG_T)
-      gBHT[gShareXOR] = current_predict + 1;
-  }
-  else {
-    if(current_predict != STRONG_NT)
-      gBHT[gShareXOR] = current_predict - 1;
+  if(bpType == GSHARE) {
+    uint8_t current_predict = gBHT[gShareXOR];
+    if(outcome == TAKEN) {
+      if(current_predict != STRONG_T)
+        gBHT[gShareXOR] = current_predict + 1;
+    }
+    else {
+      if(current_predict != STRONG_NT)
+        gBHT[gShareXOR] = current_predict - 1;
+    }
   }
 }
