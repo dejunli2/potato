@@ -48,13 +48,14 @@ uint32_t gNumBitsMask;
 uint32_t lNumBitsMask;
 uint8_t* gBHT;
 uint32_t gShareXOR;
+
 //Shift all elements to the right, newest element shifted into leftmost position
 void updateReg(int* reg, int val)
 {
-  for(int i = ghistoryBits; i>0; i--){
-    reg[i] = reg[i-1];   
+  for(int i = 0; i < ghistoryBits-1; i++){
+    reg[i] = reg[i+1];   
   }
-  reg[0] = val;
+  reg[ghistoryBits-1] = val;
 };
 
 //Converts array value to uint32_t mask
@@ -86,7 +87,6 @@ init_predictor()
     case 1: 
             gNumBitsMask = 1;
             uint32_t temp;
-            gNumBitsMask = 1;
             for(int i = 1; i < ghistoryBits; i++) {
               temp = 1 << i;
               gNumBitsMask = gNumBitsMask | temp;
