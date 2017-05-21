@@ -48,7 +48,7 @@ uint32_t gNumBitsMask;
 uint32_t lNumBitsMask;
 uint8_t* gBHT;
 uint32_t gShareXOR;
-
+//gshare working
 //Shift all elements to the right, newest element shifted into leftmost position
 void updateReg(int* reg, int val)
 {
