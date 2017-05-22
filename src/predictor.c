@@ -39,30 +39,41 @@ int verbose;
 #define WEAK_NT 1
 #define WEAK_T 2
 #define STRONG_T 3
+
 #define STRONG_G 0
 #define WEAK_G 1
 #define WEAK_L 2
 #define STRONG_L 3
-int* ghistoryReg;
-uint32_t ghistoryMask;
-int* lhistoryReg;
-uint32_t lhistoryMask;
-uint32_t pcHistoryMask;
-uint32_t gNumBitsMask;
-uint32_t lNumBitsMask;
-uint32_t pcNumBitsMask;
-uint8_t* gBHT;
-uint32_t* lPHT;
-uint32_t l_pattern;
-uint8_t* lBHT;
-uint8_t* chooserHT;
-uint32_t gShareXOR;
-uint8_t g_val;
-uint8_t l_val;
-uint8_t chooser;
+
+//Global History
+int* ghistoryReg; //Stores the outcome of most recent branches (GHR)
+uint32_t ghistoryMask; //ghistoryReg as a number/mask (GHR as number)
+uint32_t gNumBitsMask; //Mask of 111..11 (#ghistoryBits of 1's)
+uint8_t* gBHT; //Global branch history table, indexed by GHR
+uint8_t g_val; //Variable to store entry from global history table
+
+//Local History
+int* lhistoryReg; //Currently unused
+uint32_t lhistoryMask; //Currently unused
+uint32_t lNumBitsMask; //Mask of 111..11 (#lhistoryBits of 1's)
+uint32_t* lPHT; //Table of size 2^(pcIndexBits), entries are pattern seen at that address of PC
+uint32_t l_pattern; //Branch pattern found at/addressed by pcHistoryMask
+uint8_t* lBHT; //BHT of size 2^(lhistoryBits), entries are addressed by the pattern found in lPHT
+uint8_t l_val; //Variable to store entry from local history table
+
+//gshare
+uint32_t gShareXOR; //XOR'ed value of lower PC bits and the GHR
+
+//Tournament
+uint32_t pcHistoryMask; //the contents of pc masked with pcNumBitsMask
+uint32_t pcNumBitsMask; //Mask of 111..11 (#pcIndexBits of 1's)
+uint8_t* chooserHT; //History table to track which predictor is better, same size as gBHT and indexed by GHR
+uint8_t chooser; //value from chooser history table
+
 uint32_t temp;
+
 //gshare working
-//Shift all elements to the right, newest element shifted into leftmost position
+//Shift all elements to the left, newest element shifted into rightmost position
 void updateReg(int* reg, int val)
 {
   for(int i = 0; i < ghistoryBits-1; i++){
@@ -110,7 +121,8 @@ init_predictor()
               gBHT[i] = WEAK_NT;
 	    } 
 	    break;
-    case 2: gNumBitsMask = 1; 
+    case 2: //Create masks for GHR(gBHT and chooserHT address), lPHT(lBHT address), and PC (lPHT address)
+            gNumBitsMask = 1; 
             for(int i = 1; i < ghistoryBits; i++) {
               temp = 1 << i;
               gNumBitsMask = gNumBitsMask | temp;
@@ -125,7 +137,11 @@ init_predictor()
 	      temp = 1 << i;
               pcNumBitsMask = pcNumBitsMask | temp;
 	    }
+            
+            //Create (int) GHR, size ghistoryBits
             ghistoryReg = (int*) calloc(ghistoryBits, sizeof(int));            
+	    
+            //Create GBHT and chooserHT, size 2^(ghistoryBits)
 	    gBHT = (uint8_t*) calloc(gNumBitsMask + 1, sizeof(uint8_t));	    
             for(int i = 0; i < gNumBitsMask + 1; i++) {
               gBHT[i] = WEAK_NT;
@@ -134,8 +150,12 @@ init_predictor()
             for(int i = 0; i < gNumBitsMask + 1; i++) {
 	      chooserHT[i] = WEAK_G;
 	    }
+     
+            //Create lPHT, size 2^(pcIndexBits)
 	    lPHT = (uint32_t*) calloc(pcNumBitsMask + 1, sizeof(uint32_t));
-	    lBHT = (uint8_t*) calloc(lNumBitsMask + 1, sizeof(uint8_t));
+	    
+	    //Create lBHT, size 2^(lhistoryBits)
+            lBHT = (uint8_t*) calloc(lNumBitsMask + 1, sizeof(uint8_t));
 	    for(int i = 0; i < lNumBitsMask + 1; i++) {
 	      lBHT[i] = WEAK_NT;
 	    }
@@ -167,18 +187,27 @@ make_prediction(uint32_t pc)
       else
         return NOTTAKEN;
     case TOURNAMENT:
+      //Convert GHR to number/address, access gBHT at that address
       ghistoryMask = reg2mask(ghistoryReg);
       g_val = gBHT[ghistoryMask];
+
+      //Mask pc to get lower bits/lPHT address, access lPHT at that address
       pcHistoryMask = (pc & pcNumBitsMask);
       l_pattern = lPHT[pcHistoryMask];
-      l_val = lBHT[l_pattern];
+      
+      //Mask pattern to find address at lBHT, access lBHT at that address
+      l_val = lBHT[ (l_pattern&lNumBitsMask) ];
+      
+      //ghistoryMask is also the address of the chooser history table
       chooser = chooserHT[ghistoryMask];
+      
+      //If the chooser is global, we look at g_val
       if( (chooser == STRONG_G) | (chooser == WEAK_G) ) {
 	if ( (g_val == STRONG_T) | (g_val == WEAK_T) )
 	  return TAKEN;
         else
           return NOTTAKEN;
-      }
+      } //If the chooser is local, we look at l_val
       else {
 	if ( (l_val == STRONG_T) | (l_val == WEAK_T) )
 	  return TAKEN;
@@ -223,28 +252,30 @@ train_predictor(uint32_t pc, uint8_t outcome)
        break;
      case TOURNAMENT: 
        //Update chooser
-      
+       //If global predictor was correct and local was incorrect, shift towards global predictor
        if( (g_val == outcome) & (l_val != outcome) ) {
-         if( chooser != STRONG_G )
+         if( chooser != STRONG_G ) //Check to make sure we don't drop below 0 (STRONG_G)
            chooserHT[ghistoryMask] = chooserHT[ghistoryMask] - 1;
        }
+       //If local predictor was correct and global was incorrect, shift towards local predictor
        if( (l_val == outcome) & (g_val != outcome) ) {
-	 if( chooser != STRONG_L )
+	 if( chooser != STRONG_L ) //Check to make sure we don't increase above 3 (STRONG_L)
 	   chooserHT[ghistoryMask] = chooserHT[ghistoryMask] + 1;
        }
-
+       //In the case of both local and global being right/wrong, then we do not shift the chooser
+       
        //Update lBHT and gBHT 
        if(outcome == TAKEN) {
-         if(g_val != STRONG_T)
+         if(g_val != STRONG_T) 
            gBHT[ghistoryMask] = gBHT[ghistoryMask] + 1;
 	 if(l_val != STRONG_T)
-           lBHT[l_pattern] = lBHT[l_pattern] + 1; 
+           lBHT[ (l_pattern&lNumBitsMask) ] = lBHT[ (l_pattern&lNumBitsMask) ] + 1; 
        }
        else {
          if(g_val != STRONG_NT)
            gBHT[ghistoryMask] = gBHT[ghistoryMask] - 1;
 	 if(l_val != STRONG_NT)
-           lBHT[l_pattern] = lBHT[l_pattern] - 1;
+           lBHT[ (l_pattern&lNumBitsMask) ] = lBHT[ (l_pattern&lNumBitsMask) ] - 1;
        }
        
        //Update GHR
