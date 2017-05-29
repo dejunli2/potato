@@ -49,7 +49,15 @@ uint8_t* gBHT; //Global branch history table, indexed by GHR
 uint8_t g_val; //Variable to store entry from global history table
 uint32_t gShareXOR; //XOR'ed value of lower PC bits and the GHR
 
+//tournament variables
+uint32_t gmask, lmask, pcmask;
+//uint8_t* gBHT;
+uint8_t* lBHT;
+uint8_t* cBHT;
+uint32_t* PHT;
+uint32_t GHR;
 
+//the rando
 uint32_t temp;
 
 //gshare working
@@ -101,7 +109,34 @@ init_predictor()
               gBHT[i] = WN;
 	    } 
 	    break;
-    case 2: break;
+    case 2: gmask = 1;
+            for(int i = 1; i < ghistoryBits; i++) {
+	      temp = 1 << i;
+              gmask = gmask | temp;
+            }
+            lmask = 1;
+            for(int i = 1; i < lhistoryBits; i++){
+              temp = 1 << i;
+              lmask = lmask | temp;
+            }
+            pcmask = 1;
+            for(int i = 1; i < pcIndexBits; i++){
+              temp = 1 << i;
+              pcmask = pcmask | temp;
+            }
+            gBHT = (uint8_t*) calloc(gmask + 1, sizeof(uint8_t));
+            cBHT = (uint8_t*) calloc(gmask + 1, sizeof(uint8_t));
+            lBHT = (uint8_t*) calloc(lmask + 1, sizeof(uint8_t));
+            PHT = (uint32_t*) calloc(pcmask + 1, sizeof(uint32_t));
+	    GHR = 0;
+	    for(int i = 0; i < gmask + 1; i++){
+              gBHT[i] = WN;
+              cBHT[i] = WG;
+            }  
+            for(int i = 0; i < lmask + 1; i++){
+              lBHT[i] = WN;
+            }
+            break;
     case 3: break;
     default: break;
   }
@@ -128,8 +163,29 @@ make_prediction(uint32_t pc)
         return TAKEN;
       else
         return NOTTAKEN;
-    case TOURNAMENT:
-      return TAKEN;
+    case TOURNAMENT:{
+      uint8_t choice = cBHT[GHR];
+      uint8_t g_predict = gBHT[GHR];
+      uint32_t PHT_entry = PHT[pc&pcmask];
+      uint8_t l_predict = lBHT[PHT_entry];
+      if( (choice == WG) || (choice == SG) ){
+        if( (g_predict == WT) || (g_predict == ST) ){
+	  return TAKEN;
+        }
+        if( (g_predict == WN) || (g_predict == SN) ){
+          return NOTTAKEN;
+        }
+      }
+      if( (choice == WL) || (choice == SL) ){
+        if( (l_predict == WT) || (l_predict == ST) ){
+          return TAKEN;
+        }
+        if( (l_predict == WN) || (l_predict == SN) ){
+          return NOTTAKEN;
+        }
+      }
+      break;
+    }
     case CUSTOM:
       return NOTTAKEN;
     default:
@@ -166,7 +222,59 @@ train_predictor(uint32_t pc, uint8_t outcome)
          }
        } 
        break;
-     case TOURNAMENT: break;
+     case TOURNAMENT:{
+        uint8_t choice = cBHT[GHR];
+        uint8_t g_predict = gBHT[GHR];
+        uint32_t PHT_entry = PHT[pc&pcmask];
+        uint8_t l_predict = lBHT[PHT_entry];
+    	uint8_t updated_choice, updated_gpredict, updated_lpredict;
+	uint8_t g_result, l_result;
+	updated_choice = choice;
+	updated_gpredict = g_predict;
+	updated_lpredict = l_predict;
+    	if( (g_predict == ST) || (g_predict == WT) )
+	  g_result = TAKEN;
+	else
+	  g_result = NOTTAKEN;
+	
+	if( (l_predict == ST) || (l_predict == WT) )
+	  l_result = TAKEN;
+	else
+	  l_result = NOTTAKEN;
+	
+	if( (g_result == outcome) && (l_result != outcome) ){
+	  if( choice != SG ){
+            updated_choice = choice - 1;
+          }
+	}
+        if( (g_result != outcome) && (l_result == outcome) ){
+	  if( choice != SL ){
+	    updated_choice = choice + 1;
+	  }
+    	}
+        if( outcome == TAKEN ){
+          if( g_predict != ST ){
+	    updated_gpredict = g_predict + 1;
+	  }
+	  if( l_predict != ST){
+	    updated_lpredict = l_predict + 1;
+  	  }
+	} 
+        if( outcome == NOTTAKEN ){
+	  if( g_predict != SN ){
+	    updated_gpredict = g_predict - 1;
+	  }
+	  if( l_predict != SN ){
+	    updated_lpredict = l_predict - 1;
+	  }
+	}  
+        cBHT[GHR] = updated_choice;
+        gBHT[GHR] = updated_gpredict;
+        lBHT[PHT_entry] = updated_lpredict;
+	GHR = (((GHR << 1) + outcome ) & gmask);
+        PHT[pc&pcmask] = (((PHT_entry << 1) + outcome)&lmask);  
+        break;
+     }
      case CUSTOM: break;
      default: break;
   }
